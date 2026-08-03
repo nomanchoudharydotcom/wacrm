@@ -41,11 +41,8 @@ import {
 import { useCan } from "@/hooks/use-can";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
-import {
-  uploadAccountMedia,
-  deleteAccountMedia,
-  MEDIA_MAX_BYTES_BY_KIND,
-} from "@/lib/storage/upload-media";
+import { uploadAccountMedia, deleteAccountMedia } from "@/lib/storage/upload-media";
+import { MEDIA_MAX_BYTES_BY_KIND } from "@/lib/storage/media-constants";
 import { ReplyQuote } from "./reply-quote";
 import { useTranslations } from "next-intl";
 import {

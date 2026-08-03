@@ -14,10 +14,8 @@ import {
   Upload,
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
-import {
-  uploadAccountMedia,
-  MEDIA_MAX_BYTES_BY_KIND,
-} from '@/lib/storage/upload-media';
+import { uploadAccountMedia } from '@/lib/storage/upload-media';
+import { MEDIA_MAX_BYTES_BY_KIND } from '@/lib/storage/media-constants';
 import { useAuth } from '@/hooks/use-auth';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';

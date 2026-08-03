@@ -46,7 +46,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
-import { uploadAccountMedia, MEDIA_MAX_BYTES } from "@/lib/storage/upload-media";
+import { uploadAccountMedia } from "@/lib/storage/upload-media";
+import { MEDIA_MAX_BYTES } from "@/lib/storage/media-constants";
 import { slugify, type BuilderNode } from "../shared";
 import { NextNodeRow, NodeKeySelect, TextRow } from "./fields";
 

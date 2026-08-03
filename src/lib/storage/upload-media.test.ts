@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildMediaPath, MEDIA_MAX_BYTES_BY_KIND } from "./upload-media";
+import { buildMediaPath, MEDIA_MAX_BYTES_BY_KIND } from "./media-constants";
 
 const ACCOUNT = "11111111-2222-3333-4444-555555555555";
 
