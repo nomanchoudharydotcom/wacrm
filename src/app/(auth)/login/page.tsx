@@ -36,9 +36,13 @@ function LoginPageInner() {
   // account. After a successful sign-in we send them to the join
   // page to accept rather than to /dashboard.
   const inviteToken = searchParams.get("invite");
+  // Same email-lock prefill as /signup — lets someone who already
+  // has an account land here with the field filled in instead of
+  // retyping the address the invite is locked to.
+  const prefillEmail = searchParams.get("email");
   const t = useTranslations("LoginPage");
 
-  const [email, setEmail] = useState("");
+  const [email, setEmail] = useState(prefillEmail ?? "");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);

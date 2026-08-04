@@ -137,6 +137,11 @@ export const RATE_LIMITS = {
    *  successful redemption mutates two profiles and an invite row, so
    *  the abuse surface is "spam join attempts." */
   invitationRedeem: { limit: 10, windowMs: 60_000 },
+  /** Invitation quick-join (public, per-IP). Creates a confirmed auth
+   *  user + moves them into the invite's account in one call, so it's
+   *  tighter than peek but matches redeem — the abuse surface (spam
+   *  account creation against a locked email) is the same shape. */
+  invitationJoin: { limit: 10, windowMs: 60_000 },
   /** Admin-only account / member-management actions: create/revoke
    *  invitation, rename account, change member role, remove member,
    *  transfer ownership. 30/min per user is comfortably above any

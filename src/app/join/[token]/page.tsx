@@ -51,6 +51,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { createClient } from '@/lib/supabase/client';
 
 interface PeekOk {
@@ -113,6 +115,20 @@ export default function JoinPage() {
   const [conflictMessage, setConflictMessage] = useState<string | null>(null);
   const [signingOut, setSigningOut] = useState(false);
 
+  // Quick-join form — shown instead of the signup/login links when
+  // the invite is email-locked, so a new teammate can go straight
+  // from "opened the link" to "logged in" without an email round
+  // trip (see /api/invitations/[token]/join).
+  const [joinFullName, setJoinFullName] = useState('');
+  const [joinPassword, setJoinPassword] = useState('');
+  const [joinConfirmPassword, setJoinConfirmPassword] = useState('');
+  const [joinError, setJoinError] = useState<string | null>(null);
+  const [joining, setJoining] = useState(false);
+  // Once the join endpoint returns "account already exists," quick-join
+  // can't proceed — fall back to the existing sign-in flow instead of
+  // leaving the visitor stuck on a dead-end error.
+  const [joinAccountExists, setJoinAccountExists] = useState(false);
+
   // Extracted so the "Try again" button on the server_error card
   // can re-run the same logic without remounting the component.
   const loadPeekAndAuth = useCallback(async () => {
@@ -170,6 +186,78 @@ export default function JoinPage() {
       cancelled = true;
     };
   }, [token]);
+
+  const handleQuickJoin = useCallback(
+    async (e: React.FormEvent, targetEmail: string) => {
+      e.preventDefault();
+      if (!token) return;
+      setJoinError(null);
+
+      if (!joinFullName.trim()) {
+        setJoinError('Enter your full name');
+        return;
+      }
+      if (joinPassword.length < 6) {
+        setJoinError('Password must be at least 6 characters');
+        return;
+      }
+      if (joinPassword !== joinConfirmPassword) {
+        setJoinError('Passwords do not match');
+        return;
+      }
+
+      setJoining(true);
+      try {
+        const res = await fetch(
+          `/api/invitations/${encodeURIComponent(token)}/join`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              fullName: joinFullName.trim(),
+              password: joinPassword,
+            }),
+          },
+        );
+
+        if (!res.ok) {
+          const payload = (await res.json().catch(() => ({}))) as {
+            error?: string;
+          };
+          if (res.status === 409 && payload.error?.toLowerCase().includes('already exists')) {
+            setJoinAccountExists(true);
+          } else {
+            setJoinError(payload.error || 'Failed to join');
+          }
+          setJoining(false);
+          return;
+        }
+
+        // The admin API that created this user doesn't hand back a
+        // browser session — sign in with the password just set so
+        // the client picks up cookies the same way a normal login
+        // would.
+        const { error: signInError } = await createClient().auth.signInWithPassword({
+          email: targetEmail,
+          password: joinPassword,
+        });
+        if (signInError) {
+          console.error('[join] post-create sign-in error:', signInError);
+          toast.error('Account created — please sign in.');
+          window.location.href = `/login?invite=${encodeURIComponent(token)}`;
+          return;
+        }
+
+        toast.success('Welcome to the team');
+        window.location.href = '/dashboard';
+      } catch (err) {
+        console.error('[join] quick-join error:', err);
+        setJoinError('Could not reach the server. Try again?');
+        setJoining(false);
+      }
+    },
+    [token, joinFullName, joinPassword, joinConfirmPassword],
+  );
 
   const handleAccept = useCallback(async () => {
     if (!token) return;
@@ -461,26 +549,144 @@ export default function JoinPage() {
     );
   }
 
-  // ----- Not authed: prompt to sign up or sign in -----
-  // Carry the locked email through as a query param so the signup
-  // page can prefill + lock the field — the visitor shouldn't be
-  // able to accidentally type a different address here.
+  // ----- Not authed -----
+  // Carry the locked email through as a query param so the signup/
+  // login pages can prefill + lock the field on the fallback path.
   const emailParam = peek.email
     ? `&email=${encodeURIComponent(peek.email)}`
     : '';
+
+  // Quick join: the invite already tells us exactly who this is, so
+  // skip the signup-then-verify-then-redeem round trip and just ask
+  // for a name + password right here. Falls back to the classic
+  // signup/login links for legacy invites with no email lock, or
+  // once we've learned an account already exists for this address.
+  if (peek.email && !joinAccountExists) {
+    const targetEmail = peek.email;
+    return (
+      <Card className="w-full max-w-md border-border bg-card">
+        {inviteHeader}
+        <CardContent>
+          <form
+            onSubmit={(e) => handleQuickJoin(e, targetEmail)}
+            className="flex flex-col gap-4"
+          >
+            {joinError && (
+              <div className="rounded-lg border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-400">
+                {joinError}
+              </div>
+            )}
+
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="joinFullName" className="text-muted-foreground">
+                Full name
+              </Label>
+              <Input
+                id="joinFullName"
+                type="text"
+                placeholder="John Doe"
+                value={joinFullName}
+                onChange={(e) => setJoinFullName(e.target.value)}
+                required
+                className="border-border bg-muted text-foreground placeholder:text-muted-foreground"
+              />
+            </div>
+
+            <div className="flex flex-col gap-2">
+              <Label className="text-muted-foreground">Email</Label>
+              <Input
+                type="email"
+                value={targetEmail}
+                readOnly
+                className="border-border bg-muted text-foreground opacity-70"
+              />
+            </div>
+
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="joinPassword" className="text-muted-foreground">
+                Password
+              </Label>
+              <Input
+                id="joinPassword"
+                type="password"
+                placeholder="At least 6 characters"
+                value={joinPassword}
+                onChange={(e) => setJoinPassword(e.target.value)}
+                required
+                className="border-border bg-muted text-foreground placeholder:text-muted-foreground"
+              />
+            </div>
+
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="joinConfirmPassword" className="text-muted-foreground">
+                Confirm password
+              </Label>
+              <Input
+                id="joinConfirmPassword"
+                type="password"
+                placeholder="Repeat your password"
+                value={joinConfirmPassword}
+                onChange={(e) => setJoinConfirmPassword(e.target.value)}
+                required
+                className="border-border bg-muted text-foreground placeholder:text-muted-foreground"
+              />
+            </div>
+
+            <Button
+              type="submit"
+              disabled={joining}
+              className="mt-1 w-full bg-primary text-primary-foreground hover:bg-primary/90"
+            >
+              {joining ? (
+                <>
+                  <Loader2 className="size-4 animate-spin" />
+                  Joining…
+                </>
+              ) : (
+                'Set password & join'
+              )}
+            </Button>
+
+            <p className="text-center text-xs text-muted-foreground">
+              Already have a wacrm account with this email?{' '}
+              <button
+                type="button"
+                onClick={() => setJoinAccountExists(true)}
+                className="text-primary hover:text-primary/80"
+              >
+                Sign in instead
+              </button>
+            </p>
+          </form>
+        </CardContent>
+      </Card>
+    );
+  }
+
   return (
     <Card className="w-full max-w-md border-border bg-card">
       {inviteHeader}
       <CardContent className="flex flex-col gap-2">
-        <Link href={`/signup?invite=${encodeURIComponent(token!)}${emailParam}`}>
-          <Button className="w-full bg-primary text-primary-foreground hover:bg-primary/90">
-            Create account &amp; join
-          </Button>
-        </Link>
+        {joinAccountExists && (
+          <p className="mb-1 text-center text-xs text-muted-foreground">
+            An account already exists for {peek.email} — sign in to accept.
+          </p>
+        )}
+        {!joinAccountExists && (
+          <Link href={`/signup?invite=${encodeURIComponent(token!)}${emailParam}`}>
+            <Button className="w-full bg-primary text-primary-foreground hover:bg-primary/90">
+              Create account &amp; join
+            </Button>
+          </Link>
+        )}
         <Link href={`/login?invite=${encodeURIComponent(token!)}${emailParam}`}>
           <Button
-            variant="outline"
-            className="w-full border-border text-muted-foreground hover:bg-muted hover:text-foreground"
+            className={
+              joinAccountExists
+                ? 'w-full bg-primary text-primary-foreground hover:bg-primary/90'
+                : 'w-full border-border text-muted-foreground hover:bg-muted hover:text-foreground'
+            }
+            variant={joinAccountExists ? 'default' : 'outline'}
           >
             I already have an account
           </Button>
