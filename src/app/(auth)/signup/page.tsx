@@ -34,9 +34,14 @@ function SignupPageInner() {
   // points back at /join/<token> so the user lands on the redeem
   // step after verifying instead of being dropped on /dashboard.
   const inviteToken = searchParams.get("invite");
+  // When the invite is email-locked, /join/<token> passes the target
+  // address along so we can prefill it here and lock the field —
+  // this avoids the confusing "signed up fine, then redeem failed
+  // for a different address" round trip.
+  const lockedEmail = searchParams.get("email");
 
   const [fullName, setFullName] = useState("");
-  const [email, setEmail] = useState("");
+  const [email, setEmail] = useState(lockedEmail ?? "");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -181,8 +186,14 @@ function SignupPageInner() {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
-                className="border-border bg-muted text-foreground placeholder:text-muted-foreground focus-visible:border-primary focus-visible:ring-primary/20"
+                readOnly={!!lockedEmail}
+                className="border-border bg-muted text-foreground placeholder:text-muted-foreground focus-visible:border-primary focus-visible:ring-primary/20 read-only:cursor-not-allowed read-only:opacity-70"
               />
+              {lockedEmail && (
+                <p className="text-xs text-muted-foreground">
+                  This invite is locked to this address.
+                </p>
+              )}
             </div>
 
             <div className="flex flex-col gap-2">

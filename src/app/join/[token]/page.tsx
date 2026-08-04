@@ -58,6 +58,9 @@ interface PeekOk {
   account_name: string;
   role: 'admin' | 'agent' | 'viewer';
   expires_at: string;
+  /** Set when the admin bound this invite to a specific address
+   *  (migration 039). Null for legacy unrestricted invites. */
+  email: string | null;
 }
 interface PeekFail {
   ok: false;
@@ -101,6 +104,7 @@ export default function JoinPage() {
   const [authedUserId, setAuthedUserId] = useState<string | null | undefined>(
     undefined, // undefined = unknown / still loading; null = signed out
   );
+  const [authedUserEmail, setAuthedUserEmail] = useState<string | null>(null);
   const [accepting, setAccepting] = useState(false);
   // `redeem_invitation` returns 409 when the caller's current account
   // has domain data, or they're already a member of a shared account.
@@ -125,10 +129,12 @@ export default function JoinPage() {
       const peekBody = (await peekRes.json()) as PeekResult;
       setPeek(peekBody);
       setAuthedUserId(authRes.data.user?.id ?? null);
+      setAuthedUserEmail(authRes.data.user?.email ?? null);
     } catch (err) {
       console.error('[join] peek error:', err);
       setPeek({ ok: false, reason: 'server_error' });
       setAuthedUserId(null);
+      setAuthedUserEmail(null);
     }
   }, [token]);
 
@@ -151,11 +157,13 @@ export default function JoinPage() {
         if (cancelled) return;
         setPeek(peekBody);
         setAuthedUserId(authRes.data.user?.id ?? null);
+        setAuthedUserEmail(authRes.data.user?.email ?? null);
       } catch (err) {
         console.error('[join] peek error:', err);
         if (cancelled) return;
         setPeek({ ok: false, reason: 'server_error' });
         setAuthedUserId(null);
+        setAuthedUserEmail(null);
       }
     })();
     return () => {
@@ -313,39 +321,85 @@ export default function JoinPage() {
           day: 'numeric',
         })}
         .
+        {peek.email && (
+          <>
+            {' '}This invite is locked to{' '}
+            <span className="text-foreground">{peek.email}</span>.
+          </>
+        )}
       </CardDescription>
     </CardHeader>
   );
 
-  // ----- Authed: show Accept button -----
+  // If the invite is email-locked and the signed-in visitor's own
+  // address doesn't match, block Accept up front instead of letting
+  // them hit the RPC's refusal — same info, friendlier next step.
+  const emailMismatch =
+    !!peek.email &&
+    !!authedUserEmail &&
+    peek.email.toLowerCase() !== authedUserEmail.toLowerCase();
+
+  // ----- Authed: show Accept button (or the email-mismatch notice) -----
   if (authedUserId) {
     return (
       <>
         <Card className="w-full max-w-md border-border bg-card">
           {inviteHeader}
           <CardContent className="flex flex-col gap-3">
-            <Button
-              onClick={handleAccept}
-              disabled={accepting}
-              className="w-full bg-primary text-primary-foreground hover:bg-primary/90"
-            >
-              {accepting ? (
-                <>
-                  <Loader2 className="size-4 animate-spin" />
-                  Accepting…
-                </>
-              ) : (
-                <>
-                  <CheckCircle className="size-4" />
-                  Accept invitation
-                </>
-              )}
-            </Button>
-            <p className="text-center text-xs text-muted-foreground">
-              Accepting moves your login into{' '}
-              <span className="text-muted-foreground">{peek.account_name}</span>. Your
-              empty personal account from signup will be cleaned up.
-            </p>
+            {emailMismatch ? (
+              <>
+                <div className="flex items-start gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
+                  <AlertTriangle className="mt-0.5 size-3.5 shrink-0 text-amber-400" />
+                  <span>
+                    You&apos;re signed in as{' '}
+                    <span className="text-amber-100">{authedUserEmail}</span>, but
+                    this invite is for{' '}
+                    <span className="text-amber-100">{peek.email}</span>. Sign out
+                    and sign in with that address to accept.
+                  </span>
+                </div>
+                <Button
+                  variant="outline"
+                  onClick={handleSignOutAndRetry}
+                  disabled={signingOut}
+                  className="w-full border-border text-muted-foreground hover:bg-muted"
+                >
+                  {signingOut ? (
+                    <>
+                      <Loader2 className="size-4 animate-spin" />
+                      Signing out…
+                    </>
+                  ) : (
+                    'Sign out & use a different email'
+                  )}
+                </Button>
+              </>
+            ) : (
+              <>
+                <Button
+                  onClick={handleAccept}
+                  disabled={accepting}
+                  className="w-full bg-primary text-primary-foreground hover:bg-primary/90"
+                >
+                  {accepting ? (
+                    <>
+                      <Loader2 className="size-4 animate-spin" />
+                      Accepting…
+                    </>
+                  ) : (
+                    <>
+                      <CheckCircle className="size-4" />
+                      Accept invitation
+                    </>
+                  )}
+                </Button>
+                <p className="text-center text-xs text-muted-foreground">
+                  Accepting moves your login into{' '}
+                  <span className="text-muted-foreground">{peek.account_name}</span>. Your
+                  empty personal account from signup will be cleaned up.
+                </p>
+              </>
+            )}
           </CardContent>
         </Card>
 
@@ -408,16 +462,22 @@ export default function JoinPage() {
   }
 
   // ----- Not authed: prompt to sign up or sign in -----
+  // Carry the locked email through as a query param so the signup
+  // page can prefill + lock the field — the visitor shouldn't be
+  // able to accidentally type a different address here.
+  const emailParam = peek.email
+    ? `&email=${encodeURIComponent(peek.email)}`
+    : '';
   return (
     <Card className="w-full max-w-md border-border bg-card">
       {inviteHeader}
       <CardContent className="flex flex-col gap-2">
-        <Link href={`/signup?invite=${encodeURIComponent(token!)}`}>
+        <Link href={`/signup?invite=${encodeURIComponent(token!)}${emailParam}`}>
           <Button className="w-full bg-primary text-primary-foreground hover:bg-primary/90">
             Create account &amp; join
           </Button>
         </Link>
-        <Link href={`/login?invite=${encodeURIComponent(token!)}`}>
+        <Link href={`/login?invite=${encodeURIComponent(token!)}${emailParam}`}>
           <Button
             variant="outline"
             className="w-full border-border text-muted-foreground hover:bg-muted hover:text-foreground"

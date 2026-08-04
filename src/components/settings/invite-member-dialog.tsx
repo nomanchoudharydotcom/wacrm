@@ -4,10 +4,18 @@
 // InviteMemberDialog
 //
 // Two-step modal:
-//   1. Form  — role + expiry + optional label → POST creates the invite.
+//   1. Form  — teammate's email (required) + role + expiry + optional
+//              label → POST creates the invite.
 //   2. Result — the share URL, returned ONCE. Copy-to-clipboard, plus a
 //              "Send via WhatsApp" deep link that pre-fills wa.me with
 //              a friendly message containing the URL.
+//
+// Every invite is now bound to the email the admin typed in — the
+// link still gets copy/shared exactly as before (WhatsApp, Slack,
+// wherever), but `redeem_invitation` (migration 039) refuses anyone
+// who signs up/in with a different address. This closes the "link
+// gets forwarded to the wrong person" gap without standing up a
+// separate transactional-email pipeline.
 //
 // The plaintext token is server-stored only as a SHA-256 hash, so once
 // the result step is dismissed the link is gone forever — the dialog
@@ -64,10 +72,18 @@ interface CreatedInvite {
   url: string;
   role: InviteRole;
   expiresInDays: number;
+  /** The email this link is locked to — echoed back on the result
+   *  step so the admin can double-check before sharing it. */
+  email: string;
   /** Snapshotted at creation time so a later account rename can't
    *  retroactively change the wa.me message text on the result step. */
   accountName: string;
 }
+
+// Same permissive pattern as the server-side check in
+// /api/account/invitations — just enough to catch typos before the
+// round-trip, not a full RFC 5322 validator.
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export function InviteMemberDialog({
   open,
@@ -77,6 +93,7 @@ export function InviteMemberDialog({
   const t = useTranslations('Settings.invite');
   const tRoles = useTranslations('Settings.roles');
   const { account } = useAuth();
+  const [email, setEmail] = useState('');
   const [role, setRole] = useState<InviteRole>('agent');
   const [expiry, setExpiry] = useState<string>('7');
   const [label, setLabel] = useState('');
@@ -84,6 +101,7 @@ export function InviteMemberDialog({
   const [result, setResult] = useState<CreatedInvite | null>(null);
 
   function reset() {
+    setEmail('');
     setRole('agent');
     setExpiry('7');
     setLabel('');
@@ -92,6 +110,12 @@ export function InviteMemberDialog({
   }
 
   async function handleCreate() {
+    const trimmedEmail = email.trim().toLowerCase();
+    if (!EMAIL_RE.test(trimmedEmail)) {
+      toast.error(t('invalidEmail'));
+      return;
+    }
+
     // Mirror the server's max-length check so we don't ship an
     // obviously-too-long label across the wire just to bounce off
     // a 400. The Input also has a `maxLength={MAX_LABEL_LEN}` cap
@@ -109,6 +133,7 @@ export function InviteMemberDialog({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          email: trimmedEmail,
           role,
           expiresInDays: Number(expiry),
           label: trimmedLabel || undefined,
@@ -130,6 +155,7 @@ export function InviteMemberDialog({
         url: data.url,
         role,
         expiresInDays: data.expiresInDays,
+        email: trimmedEmail,
         // Snapshot the account name into the result so the wa.me
         // share message has team context. Falls back to a generic
         // string if `account` hasn't loaded yet (shouldn't happen
@@ -198,6 +224,15 @@ export function InviteMemberDialog({
             </DialogHeader>
 
             <div className="space-y-3 py-2">
+              <div className="rounded-md border border-border bg-muted px-3 py-2 text-xs text-muted-foreground">
+                {t.rich('emailLockedNotice', {
+                  email: result.email,
+                  bold: (chunks: React.ReactNode) => (
+                    <strong className="text-foreground">{chunks}</strong>
+                  ),
+                })}
+              </div>
+
               <Label className="text-muted-foreground">{t('inviteLink')}</Label>
               <div className="flex gap-2">
                 <Input
@@ -268,6 +303,21 @@ export function InviteMemberDialog({
 
             <div className="space-y-4 py-2">
               <div className="space-y-2">
+                <Label className="text-muted-foreground">{t('emailLabel')}</Label>
+                <Input
+                  type="email"
+                  placeholder={t('emailPlaceholder')}
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  className="bg-muted border-border text-foreground placeholder:text-muted-foreground"
+                  autoFocus
+                />
+                <p className="text-xs text-muted-foreground">
+                  {t('emailHint')}
+                </p>
+              </div>
+
+              <div className="space-y-2">
                 <Label className="text-muted-foreground">{t('roleLabel')}</Label>
                 <Select
                   value={role}
@@ -334,7 +384,7 @@ export function InviteMemberDialog({
               </Button>
               <Button
                 onClick={handleCreate}
-                disabled={submitting}
+                disabled={submitting || !EMAIL_RE.test(email.trim())}
                 className="bg-primary hover:bg-primary/90 text-primary-foreground"
               >
                 {submitting ? (

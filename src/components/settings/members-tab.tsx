@@ -89,6 +89,7 @@ interface Invitation {
   id: string;
   role: 'admin' | 'agent' | 'viewer';
   label: string | null;
+  email: string | null;
   created_at: string;
   expires_at: string;
 }
@@ -522,17 +523,18 @@ export function MembersTab() {
                     >
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-2">
-                          <span className="text-sm font-medium text-foreground">
-                            {inv.label || t('untitledInvite')}
+                          <span className="truncate text-sm font-medium text-foreground">
+                            {inv.email || inv.label || t('untitledInvite')}
                           </span>
                           <span
-                            className={`inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-[11px] font-medium ${inviteRoleMeta.className}`}
+                            className={`inline-flex shrink-0 items-center gap-1 rounded-md border px-2 py-0.5 text-[11px] font-medium ${inviteRoleMeta.className}`}
                           >
                             <InviteRoleIcon className="size-3" />
                             {tRoles(inv.role)}
                           </span>
                         </div>
                         <p className="mt-0.5 text-xs text-muted-foreground">
+                          {inv.email && inv.label ? `${inv.label} · ` : ''}
                           {t('created', { date: fmtDate(inv.created_at) })} · {fmtExpiresIn(inv.expires_at, t)}
                         </p>
                       </div>

@@ -136,6 +136,13 @@ function getBaseUrl(request: Request): string {
 
 const MAX_LABEL_LEN = 80;
 
+// Deliberately permissive — this only gates obviously-malformed
+// input before it hits the DB. RFC 5322 has a lot of edge cases
+// we don't need to chase here; the real validation that matters
+// (does this address exist / can it receive mail) happens
+// naturally when the invitee tries to sign up with it.
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
 export async function GET() {
   try {
     const ctx = await requireRole("admin");
@@ -143,7 +150,7 @@ export async function GET() {
     const { data, error } = await ctx.supabase
       .from("account_invitations")
       .select(
-        "id, role, label, created_by_user_id, created_at, expires_at, accepted_at, accepted_by_user_id",
+        "id, role, label, email, created_by_user_id, created_at, expires_at, accepted_at, accepted_by_user_id",
       )
       .eq("account_id", ctx.accountId)
       .is("accepted_at", null)
@@ -179,7 +186,7 @@ export async function POST(request: Request) {
     if (!limit.success) return rateLimitResponse(limit);
 
     const body = (await request.json().catch(() => null)) as
-      | { role?: unknown; expiresInDays?: unknown; label?: unknown }
+      | { role?: unknown; expiresInDays?: unknown; label?: unknown; email?: unknown }
       | null;
 
     const role = body?.role;
@@ -189,6 +196,25 @@ export async function POST(request: Request) {
       // violation surfaced as a 500.
       return NextResponse.json(
         { error: "'role' must be one of admin, agent, viewer" },
+        { status: 400 },
+      );
+    }
+
+    // Email is required — every invite is now bound to a specific
+    // teammate's address (migration 039). Normalize to lowercase +
+    // trimmed so the case-insensitive match in `redeem_invitation`
+    // is exact.
+    const emailRaw = body?.email;
+    if (typeof emailRaw !== "string") {
+      return NextResponse.json(
+        { error: "'email' is required" },
+        { status: 400 },
+      );
+    }
+    const email = emailRaw.trim().toLowerCase();
+    if (!EMAIL_RE.test(email)) {
+      return NextResponse.json(
+        { error: "Enter a valid email address" },
         { status: 400 },
       );
     }
@@ -224,9 +250,10 @@ export async function POST(request: Request) {
         role,
         created_by_user_id: ctx.userId,
         label,
+        email,
         expires_at: expiresAt.toISOString(),
       })
-      .select("id, role, label, expires_at, created_at")
+      .select("id, role, label, email, expires_at, created_at")
       .single();
 
     if (error || !data) {
