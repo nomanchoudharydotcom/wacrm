@@ -646,3 +646,27 @@ export interface QuickReply {
   created_at: string;
   updated_at: string;
 }
+
+// ============================================================
+// Internal team chat (migration 037) — account-wide group channels,
+// separate from customer WhatsApp conversations.
+// ============================================================
+
+export interface TeamChannel {
+  id: string;
+  name: string;
+  /** "General" — protected, cannot be deleted. */
+  is_default: boolean;
+  created_at: string;
+}
+
+export interface TeamMessage {
+  id: string;
+  channel_id: string;
+  sender_user_id: string;
+  content_text: string;
+  created_at: string;
+  edited_at?: string | null;
+  /** Soft-delete marker — render as "message deleted" when set. */
+  deleted_at?: string | null;
+}
