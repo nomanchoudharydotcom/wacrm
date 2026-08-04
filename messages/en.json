@@ -225,6 +225,7 @@
       "delete": "Delete",
       "react": "React",
       "reactWith": "React with {emoji}",
+      "forward": "Share to Team Chat",
       "nothingToCopy": "Nothing to copy",
       "copied": "Copied",
       "copyFailed": "Copy failed"

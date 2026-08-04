@@ -225,6 +225,7 @@
       "delete": "삭제",
       "react": "반응 남기기",
       "reactWith": "{emoji}(으)로 반응하기",
+      "forward": "팀 채팅으로 공유",
       "nothingToCopy": "복사할 내용이 없습니다",
       "copied": "복사됨",
       "copyFailed": "복사 실패"

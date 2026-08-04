@@ -44,7 +44,10 @@ export async function PATCH(
       .eq('id', id)
       .eq('sender_user_id', userId)
       .is('deleted_at', null)
-      .select('id, channel_id, sender_user_id, content_text, created_at, edited_at, deleted_at')
+      .select(
+        'id, channel_id, sender_user_id, content_text, created_at, edited_at, deleted_at, ' +
+          'source_conversation_id, source_contact_name, source_contact_phone, source_content_type, source_media_url',
+      )
       .maybeSingle()
 
     if (error) {

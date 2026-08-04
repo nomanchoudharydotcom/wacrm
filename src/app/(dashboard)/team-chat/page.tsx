@@ -9,10 +9,22 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { MediaImage } from "@/components/shared/media-image";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
-import { Hash, Loader2, Pencil, Plus, Send, Trash2, X } from "lucide-react";
+import {
+  FileText,
+  Forward,
+  Hash,
+  Loader2,
+  Pencil,
+  Plus,
+  Send,
+  Trash2,
+  X,
+} from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
+import Link from "next/link";
 
 // `useSearchParams` (the `?channel=<id>` deep link below) requires a
 // Suspense boundary or the production build bails to CSR and errors
@@ -27,6 +39,75 @@ export default function TeamChatPage() {
 
 function membersToMap(members: AccountMember[]): Record<string, AccountMember> {
   return Object.fromEntries(members.map((m) => [m.user_id, m]));
+}
+
+/**
+ * Renders a forwarded customer message's snapshot (see migration
+ * 038_team_chat_forwards.sql) — a "Forwarded from X" strip plus the
+ * media/text content itself, mirroring how inbox/message-bubble.tsx
+ * renders the same content_type values so a forwarded message looks
+ * like what the team member would have seen in the Inbox.
+ *
+ * `isOwn` controls the strip's text color the same way the rest of
+ * the bubble is themed (primary-foreground on a filled bubble vs.
+ * muted-foreground on the neutral one).
+ */
+function ForwardedMessageContent({ msg, isOwn }: { msg: TeamMessage; isOwn: boolean }) {
+  const label = msg.source_contact_name || msg.source_contact_phone || "a customer";
+
+  return (
+    <div className="mb-2 space-y-2">
+      <div
+        className={cn(
+          "flex items-center gap-1.5 text-[11px]",
+          isOwn ? "text-primary-foreground/70" : "text-muted-foreground",
+        )}
+      >
+        <Forward className="h-3 w-3 flex-shrink-0" />
+        <span className="truncate">Forwarded from {label}</span>
+        {msg.source_conversation_id && (
+          <Link
+            href={`/inbox?c=${msg.source_conversation_id}`}
+            className="ml-auto flex-shrink-0 underline underline-offset-2 hover:no-underline"
+          >
+            View
+          </Link>
+        )}
+      </div>
+
+      {msg.source_content_type === "image" &&
+        (msg.source_media_url ? (
+          <MediaImage url={msg.source_media_url} alt="Shared image" />
+        ) : null)}
+
+      {msg.source_content_type === "video" && msg.source_media_url && (
+        <video
+          src={msg.source_media_url}
+          controls
+          className="max-h-64 max-w-60 rounded-lg"
+        />
+      )}
+
+      {msg.source_content_type === "audio" && msg.source_media_url && (
+        <audio src={msg.source_media_url} controls className="max-w-60" />
+      )}
+
+      {msg.source_content_type === "document" && msg.source_media_url && (
+        <a
+          href={msg.source_media_url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className={cn(
+            "flex items-center gap-2 rounded-lg px-3 py-2 text-sm hover:opacity-80",
+            isOwn ? "bg-primary-foreground/15" : "bg-background/60",
+          )}
+        >
+          <FileText className="h-5 w-5 flex-shrink-0 opacity-70" />
+          <span className="truncate">{msg.content_text || "Document"}</span>
+        </a>
+      )}
+    </div>
+  );
 }
 
 function TeamChatPageInner() {
@@ -373,7 +454,12 @@ function TeamChatPageInner() {
                                       : "bg-muted text-foreground",
                                 )}
                               >
-                                {isDeleted ? "This message was deleted" : m.content_text}
+                                {!isDeleted && m.source_content_type && (
+                                  <ForwardedMessageContent msg={m} isOwn={isOwn} />
+                                )}
+                                {isDeleted
+                                  ? "This message was deleted"
+                                  : m.source_content_type !== "document" && m.content_text}
                                 {!isDeleted && m.edited_at && (
                                   <span className="ml-1 text-[10px] opacity-70">(edited)</span>
                                 )}

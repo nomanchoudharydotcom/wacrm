@@ -57,7 +57,10 @@ export async function GET(
 
     let query = supabase
       .from('team_messages')
-      .select('id, channel_id, sender_user_id, content_text, created_at, edited_at, deleted_at')
+      .select(
+        'id, channel_id, sender_user_id, content_text, created_at, edited_at, deleted_at, ' +
+          'source_conversation_id, source_contact_name, source_contact_phone, source_content_type, source_media_url',
+      )
       .eq('channel_id', channelId)
       .order('created_at', { ascending: false })
       .limit(limit)
@@ -125,7 +128,10 @@ export async function POST(
       sender_user_id: ctx.userId,
       content_text,
     })
-    .select('id, channel_id, sender_user_id, content_text, created_at, edited_at, deleted_at')
+    .select(
+      'id, channel_id, sender_user_id, content_text, created_at, edited_at, deleted_at, ' +
+        'source_conversation_id, source_contact_name, source_contact_phone, source_content_type, source_media_url',
+    )
     .single()
 
   if (error) {

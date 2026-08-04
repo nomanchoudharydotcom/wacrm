@@ -669,4 +669,14 @@ export interface TeamMessage {
   edited_at?: string | null;
   /** Soft-delete marker — render as "message deleted" when set. */
   deleted_at?: string | null;
+  // ---- forwarded-customer-message snapshot (migration 038) ----
+  // Non-null together when this message was forwarded from the
+  // Inbox via POST /api/team-chat/forward. `source_conversation_id`
+  // is only for the "View conversation" jump link — the rest of the
+  // fields are a standalone snapshot, safe to render without it.
+  source_conversation_id?: string | null;
+  source_contact_name?: string | null;
+  source_contact_phone?: string | null;
+  source_content_type?: string | null;
+  source_media_url?: string | null;
 }

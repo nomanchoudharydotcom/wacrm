@@ -50,6 +50,7 @@ import { deleteAccountMedia } from "@/lib/storage/upload-media";
 import { TemplatePicker } from "./template-picker";
 import { AiThreadBanner } from "./ai-thread-banner";
 import { buildReplyPreview } from "./reply-quote";
+import { ForwardToTeamChatDialog } from "./forward-to-team-chat-dialog";
 import { toast } from "sonner";
 
 interface ReplyDraft {
@@ -202,6 +203,9 @@ export function MessageThread({
     }, 700);
   }, [isRefreshing, onRefresh]);
   const [replyTo, setReplyTo] = useState<ReplyDraft | null>(null);
+  // Message id currently targeted by the "Share to Team Chat" dialog.
+  // null = dialog closed.
+  const [forwardMessageId, setForwardMessageId] = useState<string | null>(null);
 
   // Profiles are bounded by RLS to rows the current user is allowed to
   // see — today that's just the current user, but the dropdown keeps the
@@ -1115,6 +1119,16 @@ export function MessageThread({
                         onReact={(emoji) => {
                           if (emoji) void postReaction(msg.id, emoji);
                         }}
+                        // Optimistic messages carry a "temp-<ts>" id until
+                        // the server round-trip reconciles them with the
+                        // real row — forwarding one of those would 404 on
+                        // the backend, so hide the affordance until it's
+                        // real.
+                        onForward={
+                          msg.id.startsWith("temp-")
+                            ? undefined
+                            : () => setForwardMessageId(msg.id)
+                        }
                       >
                         <MessageBubble
                           message={msg}
@@ -1166,6 +1180,16 @@ export function MessageThread({
         onOpenChange={setTemplateModalOpen}
         onSelect={handleSendTemplate}
       />
+
+      {forwardMessageId && (
+        <ForwardToTeamChatDialog
+          open={!!forwardMessageId}
+          onOpenChange={(next) => {
+            if (!next) setForwardMessageId(null);
+          }}
+          messageId={forwardMessageId}
+        />
+      )}
     </div>
   );
 }
