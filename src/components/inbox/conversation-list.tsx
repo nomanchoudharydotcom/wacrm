@@ -8,7 +8,7 @@ import {
   normalizeConversations,
 } from "@/lib/inbox/conversations";
 import { cn } from "@/lib/utils";
-import type { Conversation, ConversationStatus, Tag } from "@/types";
+import type { Conversation, ConversationStatus, Profile, Tag } from "@/types";
 import { Search, ChevronDown, X } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { useTranslations } from "next-intl";
@@ -72,6 +72,10 @@ export function ConversationList({
   const [tags, setTags] = useState<Tag[]>([]);
   const [selectedTagIds, setSelectedTagIds] = useState<string[]>([]);
   const [selectedCompany, setSelectedCompany] = useState<string | null>(null);
+  // Per-teammate unread filter (issue: "har team member ka alag ho,
+  // uske paas kitna unread hai"). `null` = no assignee filter.
+  const [members, setMembers] = useState<Profile[]>([]);
+  const [selectedAssignee, setSelectedAssignee] = useState<string | null>(null);
 
   // Keep the latest callback in a ref so the fetch effect below can
   // have a stable, empty-dep identity. Previously the fetch useCallback
@@ -140,6 +144,24 @@ export function ConversationList({
     };
   }, []);
 
+  // Team roster for the "Assigned" filter — RLS on `profiles` already
+  // scopes this to the caller's account, same pattern message-thread.tsx
+  // uses for its per-conversation "Assign" picker.
+  useEffect(() => {
+    const supabase = createClient();
+    let cancelled = false;
+    (async () => {
+      const { data, error } = await supabase
+        .from("profiles")
+        .select("*")
+        .order("full_name");
+      if (!cancelled && !error && data) setMembers(data as Profile[]);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   // Company options are derived from the loaded conversations — there's no
   // separate companies table, and only companies with a live conversation
   // are worth offering as an inbox filter.
@@ -150,6 +172,21 @@ export function ConversationList({
       if (co) set.add(co);
     }
     return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }, [conversations]);
+
+  // Sum of unread_count across each member's assigned conversations —
+  // shown as a badge per row in the "Assigned" dropdown so an admin can
+  // see workload distribution at a glance without opening each one.
+  const unreadByAssignee = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const c of conversations) {
+      if (!c.assigned_agent_id || c.unread_count <= 0) continue;
+      counts.set(
+        c.assigned_agent_id,
+        (counts.get(c.assigned_agent_id) ?? 0) + c.unread_count,
+      );
+    }
+    return counts;
   }, [conversations]);
 
   const tagsById = useMemo(() => {
@@ -177,6 +214,10 @@ export function ConversationList({
       );
     }
 
+    if (selectedAssignee !== null) {
+      result = result.filter((c) => c.assigned_agent_id === selectedAssignee);
+    }
+
     if (search.trim()) {
       const q = search.toLowerCase();
       result = result.filter((c) => {
@@ -188,7 +229,7 @@ export function ConversationList({
     }
 
     return result;
-  }, [conversations, filter, search, selectedTagIds, selectedCompany]);
+  }, [conversations, filter, search, selectedTagIds, selectedCompany, selectedAssignee]);
 
   const toggleTag = useCallback((id: string) => {
     setSelectedTagIds((prev) =>
@@ -347,6 +388,65 @@ export function ConversationList({
                     <span className="truncate">{co}</span>
                   </DropdownMenuItem>
                 ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
+
+          {members.length > 0 && (
+            <DropdownMenu>
+              <DropdownMenuTrigger
+                className={cn(
+                  "inline-flex max-w-40 items-center justify-center h-7 gap-1 px-2 text-xs rounded-md hover:bg-muted",
+                  selectedAssignee
+                    ? "text-primary"
+                    : "text-muted-foreground hover:text-foreground"
+                )}
+              >
+                <span className="truncate">
+                  {selectedAssignee
+                    ? members.find((m) => m.user_id === selectedAssignee)?.full_name ??
+                      t("assigned")
+                    : t("assigned")}
+                </span>
+                <ChevronDown className="h-3 w-3 shrink-0" />
+              </DropdownMenuTrigger>
+              <DropdownMenuContent
+                align="start"
+                className="max-h-64 w-56 border-border bg-popover"
+              >
+                <DropdownMenuItem
+                  onClick={() => setSelectedAssignee(null)}
+                  className={cn(
+                    "text-sm",
+                    selectedAssignee === null
+                      ? "text-primary"
+                      : "text-popover-foreground"
+                  )}
+                >
+                  {t("allTeam")}
+                </DropdownMenuItem>
+                {members.map((m) => {
+                  const unread = unreadByAssignee.get(m.user_id) ?? 0;
+                  return (
+                    <DropdownMenuItem
+                      key={m.user_id}
+                      onClick={() => setSelectedAssignee(m.user_id)}
+                      className={cn(
+                        "flex items-center justify-between gap-2 text-sm",
+                        selectedAssignee === m.user_id
+                          ? "text-primary"
+                          : "text-popover-foreground"
+                      )}
+                    >
+                      <span className="truncate">{m.full_name}</span>
+                      {unread > 0 && (
+                        <span className="flex h-4 min-w-4 shrink-0 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-bold text-primary-foreground">
+                          {unread}
+                        </span>
+                      )}
+                    </DropdownMenuItem>
+                  );
+                })}
               </DropdownMenuContent>
             </DropdownMenu>
           )}

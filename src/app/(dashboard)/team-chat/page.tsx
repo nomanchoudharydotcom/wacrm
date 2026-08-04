@@ -23,7 +23,7 @@ import {
   Trash2,
   X,
 } from "lucide-react";
-import { formatDistanceToNow } from "date-fns";
+import { format, isToday } from "date-fns";
 import Link from "next/link";
 
 // `useSearchParams` (the `?channel=<id>` deep link below) requires a
@@ -39,6 +39,18 @@ export default function TeamChatPage() {
 
 function membersToMap(members: AccountMember[]): Record<string, AccountMember> {
   return Object.fromEntries(members.map((m) => [m.user_id, m]));
+}
+
+// Absolute clock time rather than a relative "2 minutes ago" string —
+// the latter goes stale the moment it's rendered (no live-updating
+// timer here) and reads as flat-out wrong once enough time has passed
+// without a re-render. Mirrors inbox/message-bubble.tsx's HH:mm
+// convention; older-than-today messages get a date prefix since a
+// flat message list (no day-separator headers here) would otherwise
+// make two-day-old "14:02" ambiguous.
+function formatMessageTime(iso: string): string {
+  const date = new Date(iso);
+  return isToday(date) ? format(date, "HH:mm") : format(date, "MMM d, HH:mm");
 }
 
 /**
@@ -415,9 +427,7 @@ function TeamChatPageInner() {
                               <span className="font-medium">
                                 {sender?.full_name || "Unknown"}
                               </span>
-                              <span>
-                                {formatDistanceToNow(new Date(m.created_at), { addSuffix: true })}
-                              </span>
+                              <span>{formatMessageTime(m.created_at)}</span>
                             </div>
                             {isEditing ? (
                               <div className="mt-1 flex w-full flex-col gap-1">

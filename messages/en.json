@@ -140,6 +140,8 @@
       "tags": "Tags",
       "company": "Company",
       "allCompanies": "All companies",
+      "assigned": "Assigned",
+      "allTeam": "All team",
       "clearAll": "Clear all",
       "noConversations": "No conversations found",
       "noMessagesYet": "No messages yet",
