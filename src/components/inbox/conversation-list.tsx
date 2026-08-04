@@ -8,6 +8,7 @@ import {
   normalizeConversations,
 } from "@/lib/inbox/conversations";
 import { cn } from "@/lib/utils";
+import { useAuth } from "@/hooks/use-auth";
 import type { Conversation, ConversationStatus, Profile, Tag } from "@/types";
 import { Search, ChevronDown, X } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
@@ -54,7 +55,8 @@ export function ConversationList({
   resyncToken = 0,
 }: ConversationListProps) {
   const t = useTranslations("Inbox.conversationList");
-  
+  const { user } = useAuth();
+
   const FILTER_OPTIONS: { label: string; value: InboxFilter }[] = useMemo(() => [
     { label: t("filterAll"), value: "all" },
     { label: t("filterUnread"), value: "unread" },
@@ -189,6 +191,23 @@ export function ConversationList({
     return counts;
   }, [conversations]);
 
+  // How many *chats* (not messages) currently have unread activity —
+  // shown as a badge on the "Unread" status-filter item. Deliberately a
+  // conversation count, not a sum of unread_count — "kitni chats unread
+  // hain", not "kitne unread messages hain" (that finer-grained sum is
+  // what the per-member Assigned badges show instead).
+  const unreadConversationCount = useMemo(
+    () => conversations.filter((c) => c.unread_count > 0).length,
+    [conversations],
+  );
+
+  // Total conversations assigned to the signed-in user, regardless of
+  // read state — powers the "Assigned to me" quick-filter row.
+  const assignedToMeCount = useMemo(
+    () => conversations.filter((c) => c.assigned_agent_id === user?.id).length,
+    [conversations, user?.id],
+  );
+
   const tagsById = useMemo(() => {
     const m = new Map<string, Tag>();
     for (const t of tags) m.set(t.id, t);
@@ -292,13 +311,18 @@ export function ConversationList({
                   key={opt.value}
                   onClick={() => setFilter(opt.value)}
                   className={cn(
-                    "text-sm",
+                    "flex items-center justify-between gap-2 text-sm",
                     filter === opt.value
                       ? "text-primary"
                       : "text-popover-foreground"
                   )}
                 >
-                  {opt.label}
+                  <span>{opt.label}</span>
+                  {opt.value === "unread" && unreadConversationCount > 0 && (
+                    <span className="flex h-4 min-w-4 shrink-0 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-bold text-primary-foreground">
+                      {unreadConversationCount}
+                    </span>
+                  )}
                 </DropdownMenuItem>
               ))}
             </DropdownMenuContent>
@@ -403,10 +427,12 @@ export function ConversationList({
                 )}
               >
                 <span className="truncate">
-                  {selectedAssignee
-                    ? members.find((m) => m.user_id === selectedAssignee)?.full_name ??
-                      t("assigned")
-                    : t("assigned")}
+                  {selectedAssignee === user?.id
+                    ? t("assignedToMe")
+                    : selectedAssignee
+                      ? members.find((m) => m.user_id === selectedAssignee)?.full_name ??
+                        t("assigned")
+                      : t("assigned")}
                 </span>
                 <ChevronDown className="h-3 w-3 shrink-0" />
               </DropdownMenuTrigger>
@@ -425,6 +451,24 @@ export function ConversationList({
                 >
                   {t("allTeam")}
                 </DropdownMenuItem>
+                {user?.id && (
+                  <DropdownMenuItem
+                    onClick={() => setSelectedAssignee(user.id)}
+                    className={cn(
+                      "flex items-center justify-between gap-2 border-b border-border text-sm font-medium",
+                      selectedAssignee === user.id
+                        ? "text-primary"
+                        : "text-popover-foreground"
+                    )}
+                  >
+                    <span className="truncate">{t("assignedToMe")}</span>
+                    {assignedToMeCount > 0 && (
+                      <span className="flex h-4 min-w-4 shrink-0 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-bold text-primary-foreground">
+                        {assignedToMeCount}
+                      </span>
+                    )}
+                  </DropdownMenuItem>
+                )}
                 {members.map((m) => {
                   const unread = unreadByAssignee.get(m.user_id) ?? 0;
                   return (
